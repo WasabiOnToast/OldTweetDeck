@@ -131,6 +131,31 @@ function updateFollows(id = getCurrentUserId()) {
 setTimeout(updateFollows, 1000);
 setInterval(updateFollows, 1000 * 60);
 
+function parseUnifiedCard(tweet) {
+    const values = tweet?.card?.binding_values;
+    if (!values) return;
+    const addMedia = (uc) => {
+        if (uc?.type === "STRING" && uc.string_value) {
+            const sv = JSON.parse(uc.string_value);
+            const svm = sv.media_entities ? Object.values(sv.media_entities) : null;
+            if (svm) {
+                tweet.entities.media = Array.isArray(tweet.entities.media)
+                    ? [...tweet.entities.media, ...svm]
+                    : svm;
+            }
+        }
+    };
+    if (Array.isArray(values)) {
+        values.forEach((bv) => {
+            if (bv.key === "unified_card") {
+                addMedia(bv.value);
+            }
+        });
+    } else if (values.unified_card) {
+        addMedia(values.unified_card);
+    }
+}
+
 function parseNoteTweet(result) {
     let text, entities;
     if (result.note_tweet.note_tweet_results.result) {
@@ -328,6 +353,7 @@ function parseTweet(res) {
                 }
                 if (res.card && res.card.legacy && res.card.legacy.binding_values) {
                     tweet.retweeted_status.card = res.card.legacy;
+					parseUnifiedCard(tweet.retweeted_status);
                 }
             } else {
                 console.warn("No retweeted status", result);
@@ -427,6 +453,7 @@ function parseTweet(res) {
                 bvo[bv.key] = bv.value;
             }
             tweet.card.binding_values = bvo;
+			parseUnifiedCard(tweet);
         }
         if (res.views) {
             if (!tweet.ext) tweet.ext = {};
@@ -548,6 +575,8 @@ const proxyRoutes = [
             if (data.errors && data.errors[0]) {
                 return [];
             }
+
+			data.map(parseUnifiedCard);
 
             if(localStorage.OTDshowAllRepliesInHome === '1') {
                 return data;
@@ -1864,6 +1893,8 @@ const proxyRoutes = [
                 if (!tweet.retweeted) tweet.retweeted = false;
                 if (!tweet.truncated) tweet.truncated = false;
                 if (!tweet.user_id) tweet.user_id = parseInt(tweet.user_id_str);
+
+				parseUnifiedCard(tweet);
             }
 
             for (let id in data.globalObjects.users) {
